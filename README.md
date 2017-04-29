@@ -4,6 +4,8 @@ Add the following to your init file
 ``` elisp
 (require 'mastodon)
 
+(add-to-list 'load-path "path-to-modules/mastodon-future.el/lisp/")
+
 (require 'mastodon-async)
 (require 'mastodon-inspect)
 (require 'mastodon-profile)
