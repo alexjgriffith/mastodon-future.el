@@ -14,3 +14,8 @@ Add the following to your init file
 (define-key mastodon-mode-map (kbd "N") #'mastodon-notifications--get)
 ```
 
+There is also an alternate toot-renderer. Note that it has **NOT** been fully integraeted with all time line funcitonality.
+
+``` elsip
+(require 'mastodon-render)
+```
