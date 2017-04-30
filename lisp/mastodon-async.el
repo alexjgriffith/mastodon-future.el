@@ -1,5 +1,5 @@
-;;; mastodon-async.el --- Client for Mastodon
 ;;; -*- lexical-binding: t -*-
+;;; mastodon-async.el --- Client for Mastodon
 
 ;; Copyright (C) 2017 Johnson Denen
 ;; Author: Johnson Denen <johnson.denen@gmail.com>
@@ -53,7 +53,7 @@
 (defun mastodon-async--display-buffer ()
   "Display the async user facing buffer."
   (interactive)
-  (display-buffer *mastodon-async-buffer*))
+  (display-buffer mastodon-async--buffer))
 
 (defun mastodon-async--display-queue ()
   "Display the async queue buffer."
@@ -136,13 +136,14 @@ Filter the toots using FILTER."
 
 (defun mastodon-async--http-hook (filter)
   "Return a lambda with a custom FILTER for processing toots."
-      (lambda (proc data)(let* ((string
+  (lexical-let ((filter filter))
+      (lambda (proc data) (let* ((string
               (mastodon-async--stream-filter
                (mastodon-async--http-layer proc data)))
              (queue-string (mastodon-async--cycle-queue string)))
     (when queue-string
       (mastodon-async--output-toot
-       (funcall filter queue-string))))))
+       (funcall filter queue-string)))))))
 
 
 (defun mastodon-async--process-queue-string (string)
