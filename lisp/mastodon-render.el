@@ -43,6 +43,37 @@
 (defcustom mastodon-render-reblog-string "BOOSTED"
   "The string that appears between two users after boosting.")
 
+(defvar mastodon-render-event-components '()
+  "A list of event components that have a getter.
+
+Getters are defined by mastodon-render--define-part")
+
+(defmacro mastodon-render--define-part (name face test-fun
+                                             true-value false-value &rest more-plist-values)
+  "Create a getter for NAME from EVENT json strucutre. 
+
+TEST-FUN, TRUE-VALUE, and FALSE-VALUE will be evaluated with a single
+argument, event, if they are functions. If they are not functions their
+literal values will be used in the output plist"
+  (let* ((func (intern (format "mastodon-format--get-%s" name)))
+         (docs (format "Get %s from EVENT json structure." name)))
+    (add-to-list 'mastodon-render-event-components `(,name ,func))
+   `(defun ,func (event) ,docs
+      (let* ((state (mastodon-render--eval-if-funcp ,test-fun event))
+            (true (mastodon-render--eval-if-funcp ,true-value event state))
+            (false (mastodon-render--eval-if-funcp ,false-value event state)))
+      (list 'type ',name
+          'state state
+          'true true
+          'false false
+          'face ',face
+          ,@more-plist-values)))))
+
+(defun mastodon-render--eval-if-funcp (func &rest vars)
+    (if (functionp func)
+        (apply func vars)
+      func))
+
 (defun mastodon-render--get-field (event field)
   (cdr (assoc field event)))
 
@@ -62,122 +93,132 @@
     (insert "\n")
     (buffer-string)))
 
-(defun mastodon-render--get-spoiler-text (event)
-  (let* ((spoiler-value (mastodon-render--get-field event 'spoiler_text))
-         (spoiler (if (equal spoiler-value "")
-                      ""
-                    (mastodon-render--process-spoiler))))
-    (list spoiler (list 'type :spoiler-text 'face 'default))))
 
-(defun mastodon-render--get-cw (event)
- (let ((cw(if (equal "" (mastodon-render--get-field event 'spoiler_text))
-              ""
-            mastodon-render-waring-string)))
- (list cw
-       (list 'type :cw
-             'hidden :false
-             'face 'success))))
+(mastodon-render--define-part
+ spoiler-text
+ default
+ (not (equal spoiler-value ""))
+ (mastodon-render--get-field event 'spoiler_text)
+ "")
 
-(defun mastodon-render--get-content (event)
-  (let ((content (mastodon-render--process-content
-                  (mastodon-render--get-field event 'content))))
-    (list content
-          (list 'type :content
-                'face 'default))))
-
-(defun mastodon-render--get-images (event)
-  (let*((media-list (append
-                     (mastodon-render--get-field
-                      event
-                      'media_attachments)
-                     nil))
-        (media-string (if (> (length media-list) 0) 
-                          (concat (mapconcat
-                           (lambda(media)
-                             (concat "Media_Link:: "
-                                     (cdr(assoc 'preview_url media))))
-                           media-list "\n") "\n")
-                        "" ;;else
-                        )))
-    (list  media-string
-           (list
-                'type :media
-                'number (length media-list)
-                'attachments media-list
-                'face 'default))))
-
-(defun mastodon-render--get-boosted (event)
-  (let((boost (if (equal (mastodon-render--get-field event 'reblogged)
-                         :json-true)
-                  mastodon-render-boosted-string
-                "")))
-        (list boost
-              (list 'type :boosted
-                    'face 'success))))
-
-(defun mastodon-render--get-favourited (event)
-  (let((fave (if (equal (mastodon-render--get-field event 'favourited)
-                        :json-true)
-                mastodon-render-favourited-string
-                "")))
-        (list fave
-              (list 'type :favourited
-                    'face 'success))))
+(mastodon-render--define-part
+ cw
+ success
+ (not(equal "" (mastodon-render--get-field event 'spoiler_text)))  
+ mastodon-render-waring-string
+ ""
+ 'hidden '())
 
 
-(defun mastodon-render--get-display-name (event)
-  (let ((user
-         (mastodon-render--process-display-name
-         (mastodon-render--get-field-2 event 'account 'display_name))))
-    (list user
-          (list
-           'type :display-name
-           'face 'warning))))
+(mastodon-render--define-part
+ context
+ default t
+ (lambda(event status)
+   (mastodon-render--process-content
+    (mastodon-render--get-field event 'content)))
+ "")
 
-(defun mastodon-render--get-acct (event)
-  (let ((acct (concat "(@"
-                      (mastodon-render--get-field-2 event 'account 'acct)
-                      ")")))
-    (list  acct
-           (list 'type :acct
-                 'face 'default))))
+;; This is the most complex of all the getters so far
+(mastodon-render--define-part
+ images ;; getter type
+ default ;; the face of the output string
+ (lambda(event state) ;; test wether the state should be true
+   ;; lambda not neaded, but good for clarity
+   (let ((media-list (append
+                      ;; Attachments in unboosted toots
+                      (mastodon-render--get-field
+                       event
+                       'media_attachments)
+                      ;; Attachments in boosted toots
+                      (mastodon-render--get-field-2
+                       event
+                       'reblog
+                       'media_attachments)
+                      ;; append [] nil :: Vector -> List
+                      nil)))
+   (when (> (length media-list) 0) 
+     (mapcar
+      (lambda(media)
+        ;; extract the preview_url from the attachment
+        ;; details
+        (cdr(assoc 'preview_url media)))
+      media-list ))))
+ (concat (mapconcat ;; true case
+          (lambda(media)
+            (concat "Media_Link:: "
+                     media))
+          state "\n") "\n")
+ "" ;; false case
+ 'attachments state ;; additional plist val 1
+ 'number (length state) ;; additional plist val 2)
 
-(defun mastodon-render--get-reblog (event)
-  (let((rebloger(if (mastodon-render--get-field event 'reblog)
-                    mastodon-render-reblog-string
-                  "")))
-    (list rebloger
-          (list 'type :reblog
-                'face 'success))))
 
-(defun mastodon-render--get-reblog-display-name (event)
-  (let((rebloger(if (mastodon-render--get-field event 'reblog)
-                    (mastodon-render--process-display-name
-                     (mastodon-render--get-field-3 event
-                                 'reblog
-                                 'account
-                                 'display_name))
-                  "")))
-    (list rebloger
-          (list 'type :reblog-diplay-name
-                'face 'warning))))
+(mastodon-render--define-part
+ boosted
+ success
+ (equal (mastodon-render--get-field event 'reblogged) :json-true)
+ mastodon-render-boosted-string
+ "")
 
-(defun mastodon-render--get-reblog-acct (event) 
-  (let (( re-acct(if (mastodon-render--get-field event 'reblog)
-                     (concat "(@"(mastodon-render--get-field-3 event 'reblog 'account 'acct)
-                             ")")
-                   "")))
-    (list re-acct
-          (list 'type :reblog-acct                
-                'face 'default))))
+(mastodon-render--define-part
+ favourited
+ success
+ (equal (mastodon-render--get-field event 'favourited) :json-true)
+ mastodon-render-favourited-string
+ "")
 
-(defun mastodon-render--get-time (event)
-  (let((time
-        (mastodon-render--process-time
-          (mastodon-render--get-field event 'created_at))))
-    (list time
-          (list 'type :time                
-                'face 'default))))
+(mastodon-render--define-part
+ display-name
+ warning
+ t
+ (mastodon-render--process-display-name
+  (mastodon-render--get-field-2 event 'account 'display_name))
+ "")
+
+(mastodon-render--define-part
+ acct
+ default
+ t
+ (concat "(@" (mastodon-render--get-field-2 event 'account 'acct) ")")
+ "")
+
+
+(mastodon-render--define-part
+ acct
+ success
+ (mastodon-render--get-field event 'reblog)
+ mastodon-render-reblog-string
+ "")
+
+
+(mastodon-render--define-part
+ reblog-display-name
+ warning
+ (mastodon-render--get-field event 'reblog)
+ (mastodon-render--process-display-name
+  (mastodon-render--get-field-3 event
+                                'reblog
+                                'account
+                                'display_name))
+ "")
+
+(mastodon-render--define-part
+ reblog-display-name
+ default
+ (mastodon-render--get-field event 'reblog)
+ (concat "(@"(mastodon-render--get-field-3 event 'reblog 'account 'acct)
+        ")")
+ "")
+
+
+(mastodon-render--define-part
+ time
+ default
+ t
+ (mastodon-render--process-time
+          (mastodon-render--get-field event 'created_at))
+ "")
+
 
 (defun mastodon-render--process-spoiler (string)
   (mastodon-render--html string))
