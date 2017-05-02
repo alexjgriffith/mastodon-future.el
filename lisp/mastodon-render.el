@@ -291,6 +291,17 @@
   ;; for now false is "" for all parts
   )
 
+;; eg
+(defun mastodon-render--get-content-mod (event)
+  (let ((content (mastodon-render--process-content
+                  (mastodon-render--get-field event 'content))))
+    (list 'type :content
+          'state t
+          'true content
+          'false ""
+          'face 'default))))
+
+
 ;; (insert(default-toot *boost-buffer* 'default-compile-toot-string))
 ;;(setq debug-on-error 't)
 (defun mastodon-tl--toot (event)
