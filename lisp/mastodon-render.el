@@ -104,7 +104,7 @@ Defines LAYOUT structure for toots." name)))
     (shr-render-region (point-min) (point-max))
     (goto-char (point-max))
     (delete-region (point) (progn (skip-chars-backward "\n") (point)))
-    (insert "\n")
+    ;; (insert "\n")
     (buffer-string)))
 
 (mastodon-render--define-part
@@ -324,7 +324,7 @@ Defines LAYOUT structure for toots." name)))
  mastodon-render-event-components ;; curently basicly hardcoded
  `(,(mastodon-render--string-or-2 spoiler-text reblog-spoiler-text)
    ,(mastodon-render--string-or-2 cw reblog-cw)
-   ,(mastodon-render--string-or-2 content reblog-content)
+   ,(mastodon-render--string-or-2 content reblog-content) "\n"
    ,images
    " | " ,boosted "" ,favourited ""
    ,display-name  ,acct
@@ -344,7 +344,7 @@ Defines LAYOUT structure for toots." name)))
       (lambda(x)
 	(if (stringp x)
 	    (let ((props
-		   `(type 'visual state t true ,x false ,x face default)))
+		   `(type visual state t true ,x false ,x face default)))
 	      (list (apply #'propertize (append (list x) props)) props))
 	  (list (apply #'propertize (append
 				   (list (if (plist-get x 'state)
@@ -364,28 +364,40 @@ Defines LAYOUT structure for toots." name)))
 	     (start prev)
 	     (end (+ prev (length (car string))))
 	     (range (list  (or (plist-get (second string) 'type)
-			       :visual)
-			   start end)))
+			       'visual)
+			   start end (cadr string))))
 	(push range range-list)
 	(setq prev (+ prev (- end start)))
 	(setq out-string (concat out-string (car string)))))
     (list out-string  (reverse range-list))))
 
 (defun mastodon-render--propertized-toot (event compile-toot-layout)
-  (let* ((toot-layout (mastodon-render--toot-string-compose
-		       (funcall compile-toot-layout event)))
+  (let* ((p-lists (funcall compile-toot-layout event))
+         (toot-layout (mastodon-render--toot-string-compose p-lists))
 	 (toot-string (car toot-layout))
-	 (ranges (cdr toot-layout))
-	(boosted (< (length(mastodon-render--get-boosted event) )0))
-	(favourited (< (length(mastodon-render--get-favourited event) )0))
-	(cw (< (length(mastodon-render--get-cw event ) )0))
-	(toot-id (mastodon-render--get-field event 'id)))
+         (ranges (cadr toot-layout))
+         (types (mapcar (lambda (p-list)
+                          (list (cons (plist-get (cadr p-list) 'type)
+                                      (plist-get  (cadr p-list) 'state))))
+                        p-lists))	 
+         (boosted (assoc (cons 'boosted  t) types) )
+         (favourited (assoc (cons 'favourited  t) types))
+         (cw (assoc (cons 'cw  t) types))
+         (toot-id (mastodon-render--get-field event 'id)))
     (propertize toot-string
 		'toot-id toot-id
 		'boosted boosted
 		'favourited favourited
 		'cw cw
-		'ranges ranges)))
+		'ranges ranges
+                'toot-json event)))
+
+;; (defun mastodon-render--fold-cw()
+;;   (interactive)
+;;   (if (get-text-property (point) 'cw)
+      
+;;       )
+;;   )
 
 (defun mastodon-render--toot (event)
   (insert (mastodon-render--propertized-toot
@@ -399,16 +411,17 @@ Defines LAYOUT structure for toots." name)))
     (with-current-buffer buffer (insert(pp props))) (display-buffer buffer)))
 
 ;; (mastodon-render--goto-part 'cw )
-(defun mastodon-render--goto-part (part fun)
-  (let ((range (assoc
-		part
-		(car(plist-get
-		     (text-properties-at (point))
-		     'ranges)) )))
-    (goto-char (funcall fun range ))))
+;; (defun mastodon-render--goto-part (part fun)
+;;   (let ((range (assoc
+;; 		part
+;; 		(car(plist-get
+;; 		     (text-properties-at (point))
+;; 		     'ranges)) )))
+;;     (goto-char (funcall fun range ))))
 
+;; need to push values into ranges
 ;; example mastodon-render--toggle-value(:boosted )
-(defun mastodon-render--toggle-value (part)
+(defun mastodon-render--toggle-value (part &optional pos)
   ;; there will be a true and false rendering for each part
   ;; the state will be known, by toggling this you switch
   ;; the state
@@ -416,8 +429,105 @@ Defines LAYOUT structure for toots." name)))
   ;; their start and end values area djusted by the difference
   ;; in the toggle widths (eg "" "(B) " -> 0,4)
   ;; for now false is "" for all parts
-  )
+  (let* ((position (or pos (point)))
+         (toot-region (mastodon-render--toot-range position))
+         (part-region (mastodon-render--toot-part-range part position))
+         (plist (text-properties-at (cdr part-region)))
+         (ranges  (plist-get plist 'ranges))
+         (part-list (elt (assoc part ranges) 3))
+         (state (plist-get part-list 'state))
+         (true (plist-get part-list 'true))
+         (false (plist-get part-list 'false))
+         (diff (if state (- (length false) (length true))
+                 (- (length true) (length false))))         
+         (new-ranges (mapcar (lambda(x)
+                                (let ((content (elt x 0))
+                                      (start (elt x 1))
+                                      (end (elt x 2))
+                                      (rest (elt x 3))
+                                      (baseline (- (car part-region)
+                                                   (car toot-region))))
+                                  (cond
+                                   ((equal content part)
+                                         (list content
+                                               start
+                                               (- end diff)
+                                               (plist-put
+                                                rest
+                                                'state
+                                                (not state))))
+                                   ((> start baseline)
+                                         (list content
+                                               (- start diff)
+                                               (- end diff)
+                                         rest))
+                                   ((<= start baseline) x))))
+                              ranges)))
+    ;; Swap the strings
+    ;; add the local plist to the new string
+    ;; update the region property for all, shifted by diff
+    (let ((inhibit-read-only t))    
+      (delete-region (car part-region) (cdr part-region))
+      (goto-char (car part-region))
+      (insert (if state false true);; (apply 'propertize (append (list (if state false true))
+              ;;                            (plist-put
+              ;;                                   (elt part-list 3)
+              ;;                                   'state
+              ;;                                   (not state))))
+              )
+      (add-text-properties (car toot-region)
+                           (+(cdr  toot-region)  diff)
+                           `(ranges
+                             ,new-ranges))
+      )))
 
+(defun mastodon-render--toot-pos(search-next-fun else &optional pos)
+  (interactive)
+  (let* ((previous-toot
+          (funcall search-next-fun
+                   (or pos (point)) 'toot-id))
+         (toot-start (if previous-toot  previous-toot  else)))
+    toot-start))
+  
+(defun mastodon-render--toot-start(&optional pos)
+  (interactive)
+  (mastodon-render--toot-pos 'previous-single-property-change 1 pos))
+
+(defun mastodon-render--toot-end(&optional pos)
+  (interactive)
+  (mastodon-render--toot-pos 'next-single-property-change (point-max) pos))
+
+(defun mastodon-render--toot-range (&optional pos)
+  (cons (mastodon-render--toot-start pos)
+        (mastodon-render--toot-end pos)))
+
+
+(defun mastodon-render--toot-part-pos (part ind &optional pos)
+  (interactive)
+  (let* ((position (or pos (point)))
+         (toot-start (mastodon-render--toot-start pos))
+         (part-start (elt (assoc
+                           part
+                           (plist-get
+                                (text-properties-at (point))
+                                'ranges))
+                          ind)))
+    (message (format "%s %s %s" position toot-start part-start))
+    (+ toot-start part-start)))
+
+(defun mastodon-render--toot-part-start (part &optional pos)
+  (mastodon-render--toot-part-pos part 1 pos))
+
+(defun mastodon-render--toot-part-end (part &optional pos)
+  (mastodon-render--toot-part-pos part 2 pos))
+
+(defun mastodon-render--toot-part-range (part &optional pos)
+  (cons (mastodon-render--toot-part-start part pos)
+        (mastodon-render--toot-part-end part pos)))
+
+(defun mastodon-render--has-cw ()
+  (interactive)
+  (message (get-text-property (point) 'cw)))
 
 ;; (insert(default-toot *boost-buffer* 'default-compile-toot-string))
 ;;(setq debug-on-error 't)
