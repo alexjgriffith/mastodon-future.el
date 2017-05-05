@@ -1,19 +1,14 @@
-
 ;; eg
 (defun mastodon-render--get-content-mod (event)
   (let ((content (mastodon-render--process-content
-                  (mastodon-render--get-field event 'content))))
+		  (mastodon-render--get-field event 'content))))
     (list 'type :content
-          'state t
-          'true content
-          'false ""
-          'face 'default))))
+	  'state t
+	  'true content
+	  'false ""
+	  'face 'default))))
 
 
-(defun eval-if-function (func var)
-    (if (functionp func)
-        (funcall func var)
-      func))
 
 (eval-if-function  (lambda (x) x) "test")
 
@@ -24,16 +19,25 @@
 
 
 
+(defun mastodon-inspect--get-tl-vector (timeline)
+  "Display TIMELINE in buffer."
+  (let* ((url (mastodon-http--api (concat "timelines/" timeline)))
+	 (buffer (concat "*mastodon-" timeline "*"))
+	 (json (mastodon-http--get-json url)))
+    json))
+
+
+
+
+
+
 (defvar *bb* (mastodon-inspect--download-single-toot "4649149"))
 
-(mastodon-render--define-part
- context default t
- (lambda(event )
-   (mastodon-render--process-content
-    (mastodon-render--get-field event 'content)))
- "")
+(defvar *image* (mastodon-inspect--download-single-toot "4895135"))
 
 (mastodon-format--get-context *bb*)
+
+(mastodon-format--get-cw *bb*)
 
 
 (intern-soft ":test2")
@@ -43,24 +47,50 @@
 ;; (intern-soft "test")
 
 
-(defmacro mastodon-render--define-part (name face test-fun
-                                             true-value false-value)
-  "Create a getter for NAME from EVENT json strucutre. 
+(mastodon-inspect--dump-json-in-buffer "args" mastodon-render-event-components)
 
-TEST-FUN, TRUE-VALUE, and FALSE-VALUE will be evaluated with a single
-argument, event, if they are functions. If they are not functions their
-literal values will be used in the output plist"
-  (let* ((func (intern (format "mastodon-format--get-%s" name)))
-         (docs (format "Get %s from EVENT json structure." name)))
-   `(defun ,func (event) ,docs
-      (let ((state (eval-if-function ,test-fun event))
-            (true (eval-if-function ,true-value event))
-            (false (eval-if-function ,false-value event)))
-      (list 'type ',name
-          'state state
-          'true true
-          'false false
-          'face ',face)))))
+(defmacro mastodon-render--design-layout (name options layout)
+  (let* ((func (intern (format "mastodon-format--layout-%s" name)))
+	 (docs (format "Layout NAME with OPTIONS.
+
+Defines LAYOUT structure for toots." name)))
+  `(defun ,name (event) ,docs
+       (let ,(mapcar (lambda(part)
+		       `(,(car part) (funcall ,(cadr part) event)))
+		     options)))
+    (mastodon-render--toot-add-default
+     ,layout)))
+
+(mastodon-render--design-layout
+ "toot-default"
+ mastodon-render-event-components
+ `(,spoiler-text
+      ,cw
+      ,content
+      ,images
+      " | " ,boosted "" ,favourited ""
+      ,display-name  ,acct
+      ,reblog " " ,reblog-display-name
+      ,reblog-acct " " ,time "\n"
+      " ----------\n"))
+
+
+(cadar mastodon-render-event-components)
+
+
+(mastodon-render--layout-toot-default *bb*)
+
+(funcall (cadar mastodon-render-event-components) *bb* )
+
+(funcall(cadr(elt mastodon-render-event-components 9)) *bb*)
+
+`(let ,(mapcar (lambda(part) `(,(car part) (funcall ,(cadr part) event))) mastodon-render-event-components))
+
+(mastodon-inspect--dump-json-in-buffer "temp" (funcall (cadar mastodon-render-event-components) *image* ))
+
+
+
+(setq debug-on-error t)
 
 (mastodon-render--define-part content (mastodon-render--process-content
-                                       (mastodon-render--get-field)))
+				       (mastodon-render--get-field)))
