@@ -36,7 +36,6 @@
   :prefix "mastodon-async-"
   :group 'external)
 
-
 (defvar mastodon-async--queue "*mastodon-async-queue*"
   "The intermediate queue buffer name.")
 
@@ -173,25 +172,30 @@ Filter the toots using FILTER."
   
 (defun mastodon-async--output-toot (toot)
   "Process TOOT and prepend it to the async user facing buffer."
-  (when toot
-  (with-current-buffer mastodon-async--buffer
-    (let* ((inhibit-read-only t)
-           (previous (point))
-           (string-with-nl
-            (concat
-             (mastodon-tl--spoiler toot)
-             (mastodon-tl--content toot)
-             (mastodon-tl--byline toot)))
-           (string (concat
-                    (replace-regexp-in-string "\n\n" "" string-with-nl)
-                    "\n\n"))
-             (offset (length string)))
-        (goto-char 1)
-        (when (stringp string)
-          (insert string))
-        (if (equal 1 previous)
-            (goto-char 1)
-          (goto-char (+ offset previous)))))))
+  (if (not(bufferp (get-buffer mastodon-async--buffer)))
+      (mastodon-async--stop-http)
+    (when toot
+      (with-current-buffer mastodon-async--buffer
+        (let* ((inhibit-read-only t)
+               (previous (point))
+               (string-with-nl
+                (concat
+                 (mastodon-tl--spoiler toot)
+                 (mastodon-tl--content toot)
+                 (mastodon-tl--media toot)
+                 (mastodon-tl--byline toot)
+                 "\n\n"))
+               (string 
+                (replace-regexp-in-string
+                 "\n\n\n | " "\n | " string-with-nl))
+               (offset (length string)))
+          (goto-char 1)
+          (when (stringp string)
+            (insert string))
+          (mastodon-async--inline-images 1 offset)
+          (if (equal 1 previous)
+              (goto-char 1)
+            (goto-char (+ offset previous)))))))
 
 (defun mastodon-async--cycle-queue (string)
   "Append the most recent STRING from http buffer to queue buffer.
@@ -223,6 +227,49 @@ It then processes its output."
 (defun mastodon-async--stream-filter (string)
   "Remove comments from STRING."
   (replace-regexp-in-string  "^:.*\n" "" string))
+
+(defun mastodon-async--inline-images-region ()
+  (interactive)
+  (mastodon-async--inline-images (region-beginning) (region-end) (current-buffer)))
+
+(defun mastodon-async--inline-images-buffer ()
+  (interactive)
+  (mastodon-async--inline-images 1 (point-max) (current-buffer)))
+
+
+(defun mastodon-async--get-image (link &optional buffer)
+  (url-retrieve link 'mastodon-async--image-callback
+                (list link (or buffer (current-buffer))) t))
+
+(defun mastodon-async--inline-images (start end &optional buffer)
+  (goto-char start)
+  (let (line-coordinates)
+    (while
+        (setq line-coordinates (mastodon-media--select-next-media-line end))
+      (let ((link (mastodon-media--line-to-link line-coordinates)))
+        (when (mastodon-media--valid-link-p link)
+          (mastodon-async--get-image link (or buffer (current-buffer))))))))
+
+(defun mastodon-async--image-callback (data url buffer)
+  (goto-char (point-min))
+  (search-forward "\n\n")
+  (let((data (buffer-substring (point) (point-max))))
+    (with-current-buffer buffer
+      (mastodon-async--find-and-replace-image url data))))
+
+
+(defun mastodon-async--find-and-replace-image (url data)
+  (let ((loc nil)
+        (previous (point)))
+     (goto-char 1)
+    (when (setq loc (re-search-forward (concat "Media_Link:: " url)))
+      (goto-char loc)
+      (kill-whole-line)      
+      (insert-image (create-image data nil t))
+      (insert "\n")
+      (if (equal 1 previous)
+            (goto-char 1)
+          (goto-char (+ 1 previous))))))
 
 (provide 'mastodon-async)
 ;;; mastodon-async.el ends here
