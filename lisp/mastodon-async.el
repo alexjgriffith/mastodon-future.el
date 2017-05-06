@@ -61,22 +61,25 @@
 (defun mastodon-async--stop-http ()
   "Stop the http processs and close the async and http buffer."
   (interactive)
-  (delete-process (get-buffer-process mastodon-async--http-buffer))
-  (kill-buffer mastodon-async--http-buffer)
-  (setq mastodon-async--http-buffer "")
-  (kill-buffer mastodon-async--queue))
+  (let ((inhibit-read-only t))
+    (delete-process (get-buffer-process mastodon-async--http-buffer))
+    (kill-buffer mastodon-async--http-buffer)
+    (setq mastodon-async--http-buffer "")
+    (kill-buffer mastodon-async--queue)))
 
 (defun mastodon-async--stream-home ()
   "Open a stream of Home."
   (interactive)
   (mastodon-async--mastodon
    "user"
+   "home"
    'mastodon-async--process-queue-string))
 
 (defun mastodon-async--stream-federated ()
   "Open a stream of Federated."
   (interactive)
   (mastodon-async--mastodon
+   "public"
    "public"
    'mastodon-async--process-queue-string))
 
@@ -87,9 +90,20 @@
   ;; apparently it the local flag does not work
   (mastodon-async--mastodon
    "public"
+   "public?local=true"
    'mastodon-async--process-queue-local-string))
 
-(defun mastodon-async--mastodon (endpoint filter)
+(defun mastodon-async--sync-get (timeline)
+  "Display TIMELINE in buffer."
+  (message (mastodon-http--api (concat "timelines/" timeline)))
+  (let* ((url (mastodon-http--api (concat "timelines/" timeline)))
+         (buffer mastodon-async--buffer)
+         (json (mastodon-http--get-json url)))    
+    (with-output-to-temp-buffer buffer
+      (switch-to-buffer buffer)
+      (mastodon-tl--timeline json))))
+
+(defun mastodon-async--mastodon (endpoint timeline filter)
   "Make sure that the previous async process has been closed.
 
 Then Start an async mastodon stream at ENDPOINT filtering toots
@@ -98,13 +112,17 @@ using FILTER."
     (progn (mastodon-async--stop-http)
            (when (get-buffer mastodon-async--buffer)
              (with-current-buffer mastodon-async--buffer
-               (delete-region 1 (point-max))))))
+               (let ((inhibit-read-only t))
+                 (delete-region 1 (point-max)))))))
+  (mastodon-async--sync-get timeline)
+  (mastodon-async--inline-images 1 (point-max))
   (setq mastodon-async--http-buffer
         (mastodon-async--start-process (concat
                                "streaming/"
                                endpoint)
                                        filter))
-  (mastodon-async--display-buffer))
+  (mastodon-async--display-buffer)
+  (goto-char 1))
 
 (defun mastodon-async--get (url callback)
   "An async get targeted at URL with a CALLBACK."
@@ -171,7 +189,7 @@ Filter the toots using FILTER."
  
   
 (defun mastodon-async--output-toot (toot)
-  "Process TOOT and prepend it to the async user facing buffer."
+  "Process TOOT and prepend it to the async user facing buffer."  
   (if (not(bufferp (get-buffer mastodon-async--buffer)))
       (mastodon-async--stop-http)
     (when toot
@@ -195,7 +213,7 @@ Filter the toots using FILTER."
           (mastodon-async--inline-images 1 offset)
           (if (equal 1 previous)
               (goto-char 1)
-            (goto-char (+ offset previous)))))))
+            (goto-char (+ offset previous))))))))
 
 (defun mastodon-async--cycle-queue (string)
   "Append the most recent STRING from http buffer to queue buffer.
@@ -208,7 +226,8 @@ Full messages are seperated by two newlines"
       (goto-char 0)
       (let((next(re-search-forward "\n\n" nil t)))
         (when next
-          (let ((return-string (buffer-substring 1 next)))
+          (let ((return-string (buffer-substring 1 next))
+                (inhibit-read-only t))
             (delete-region 1 next)
             return-string)))))
 
@@ -260,6 +279,7 @@ It then processes its output."
 
 (defun mastodon-async--find-and-replace-image (url data)
   (let ((loc nil)
+        (inhibit-read-only t)
         (previous (point)))
      (goto-char 1)
     (when (setq loc (re-search-forward (concat "Media_Link:: " url)))
