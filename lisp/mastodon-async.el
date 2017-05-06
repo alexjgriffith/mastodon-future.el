@@ -26,6 +26,7 @@
 
 ;;; Commentary:
 
+;; Bug, mastodon-async--html-buffer not properly defined
 
 ;;; Code:
 
@@ -36,14 +37,23 @@
   :prefix "mastodon-async-"
   :group 'external)
 
-(defvar mastodon-async--queue "*mastodon-async-queue*"
-  "The intermediate queue buffer name.")
+;;;###autoload
+(define-minor-mode mastodon-async-mode
+  "Async Mastodon."
+  :lighter " MasA")
 
-(defvar mastodon-async--buffer "*mastodon-async-buffer*"
-  "User facing output buffer name.")
+(make-variable-buffer-local
+ (defvar mastodon-async--queue "" ;;"*mastodon-async-queue*"
+   "The intermediate queue buffer name."))
 
-(defvar mastodon-async--http-buffer ""
-  "Buffer variable bound to http output.")
+(make-variable-buffer-local
+ (defvar mastodon-async--buffer "" ;;"*mastodon-async-buffer*"
+   "User facing output buffer name."))
+
+(make-variable-buffer-local
+ (defvar mastodon-async--http-buffer "" ;;""
+   "Buffer variable bound to http output."))
+
 
 (defun mastodon-async--display-http ()
   "Display the async HTTP input buffer."
@@ -62,6 +72,7 @@
   "Stop the http processs and close the async and http buffer."
   (interactive)
   (let ((inhibit-read-only t))
+    (stop-process (get-buffer-process mastodon-async--http-buffer))
     (delete-process (get-buffer-process mastodon-async--http-buffer))
     (kill-buffer mastodon-async--http-buffer)
     (setq mastodon-async--http-buffer "")
@@ -73,6 +84,7 @@
   (mastodon-async--mastodon
    "user"
    "home"
+   "home"
    'mastodon-async--process-queue-string))
 
 (defun mastodon-async--stream-federated ()
@@ -81,6 +93,7 @@
   (mastodon-async--mastodon
    "public"
    "public"
+   "federated"
    'mastodon-async--process-queue-string))
 
 (defun mastodon-async--stream-local ()
@@ -91,11 +104,11 @@
   (mastodon-async--mastodon
    "public"
    "public?local=true"
+   "local"
    'mastodon-async--process-queue-local-string))
 
 (defun mastodon-async--sync-get (timeline)
   "Display TIMELINE in buffer."
-  (message (mastodon-http--api (concat "timelines/" timeline)))
   (let* ((url (mastodon-http--api (concat "timelines/" timeline)))
          (buffer mastodon-async--buffer)
          (json (mastodon-http--get-json url)))    
@@ -103,26 +116,26 @@
       (switch-to-buffer buffer)
       (mastodon-tl--timeline json))))
 
-(defun mastodon-async--mastodon (endpoint timeline filter)
+(defun mastodon-async--mastodon (endpoint timeline name filter)
   "Make sure that the previous async process has been closed.
 
 Then Start an async mastodon stream at ENDPOINT filtering toots
 using FILTER."
-  (when (get-buffer mastodon-async--http-buffer)
-    (progn (mastodon-async--stop-http)
-           (when (get-buffer mastodon-async--buffer)
-             (with-current-buffer mastodon-async--buffer
-               (let ((inhibit-read-only t))
-                 (delete-region 1 (point-max)))))))
-  (mastodon-async--sync-get timeline)
-  (mastodon-async--inline-images 1 (point-max))
-  (setq mastodon-async--http-buffer
-        (mastodon-async--start-process (concat
-                               "streaming/"
-                               endpoint)
-                                       filter))
-  (mastodon-async--display-buffer)
-  (goto-char 1))
+  ;; (when (get-buffer mastodon-async--http-buffer)
+  ;;   (progn (mastodon-async--stop-http)
+  ;;          (when (get-buffer mastodon-async--buffer)
+  ;;            (with-current-buffer mastodon-async--buffer
+  ;;              (let ((inhibit-read-only t))
+  ;;                (delete-region 1 (point-max)))))))  
+  (let ((buffer (mastodon-async--start-process
+                 (concat "streaming/" endpoint) filter name)))
+    (with-current-buffer buffer
+      (mastodon-async--display-buffer)
+      (goto-char (point-max))
+      (mastodon-async--sync-get timeline)
+      (mastodon-async--inline-images 1 (point-max))  
+      (goto-char 1)
+      )))
 
 (defun mastodon-async--get (url callback)
   "An async get targeted at URL with a CALLBACK."
@@ -134,19 +147,46 @@ using FILTER."
               (mastodon-auth--access-token))))))
     (url-retrieve url callback)))
 
-(defun mastodon-async--start-process (endpoint filter)
+(defun mastodon-async--set-local-variables(buffer
+                                           http-buffer
+                                           buffer-name
+                                           queue-name)
+  (with-current-buffer (get-buffer-create buffer)
+    (setq mastodon-async--http-buffer http-buffer)
+    (setq mastodon-async--buffer buffer-name)
+    (setq mastodon-async--queue queue-name)))
+
+(defun mastodon-async--setup-http (http-buffer name)
+  (let ((queue-name(concat "*mastodon-async-queue-" name "*"))
+        (buffer-name(concat "*mastodon-async-buffer-" name "*")))
+    (mastodon-async--set-local-variables http-buffer http-buffer
+                                         buffer-name queue-name)))
+
+(defun mastodon-async--setup-queue (http-buffer name)
+  (let ((queue-name(concat "*mastodon-async-queue-" name "*"))
+        (buffer-name(concat "*mastodon-async-buffer-" name "*")))
+    (mastodon-async--set-local-variables queue-name http-buffer
+                                         buffer-name queue-name)))
+
+(defun mastodon-async--setup-buffer (http-buffer name)
+  (let ((queue-name(concat "*mastodon-async-queue-" name "*"))
+        (buffer-name(concat "*mastodon-async-buffer-" name "*")))
+    (mastodon-async--set-local-variables buffer-name http-buffer
+                                         buffer-name queue-name)
+    (with-current-buffer buffer-name      
+      (mastodon-async-mode t))))
+
+(defun mastodon-async--start-process (endpoint filter &optional name)
   "Start an async mastodon stream at ENDPOINT.
 Filter the toots using FILTER."
   (let ((buffer (mastodon-async--get
                  (mastodon-http--api endpoint)
                  (lambda (status) status))))
-    (get-buffer-create mastodon-async--queue)
-    (get-buffer-create mastodon-async--buffer)
-    (with-current-buffer mastodon-async--buffer
-      (mastodon-mode))
-    ;; :bug: set-process-filter cant find filter need to make
-    ;; filter into a global variable
-    ;; This was fixed by declaring lexical-binding in this scope
+    ;; Set the local variables in each of the three
+    ;; buffers
+    (mastodon-async--setup-http  buffer (or name endpoint))
+    (mastodon-async--setup-queue  buffer (or name endpoint))
+    (mastodon-async--setup-buffer  buffer (or name endpoint))    
     (set-process-filter (get-buffer-process buffer)
                         (mastodon-async--http-hook filter))
     buffer))
@@ -154,13 +194,15 @@ Filter the toots using FILTER."
 (defun mastodon-async--http-hook (filter)
   "Return a lambda with a custom FILTER for processing toots."
   (lexical-let ((filter filter))
-      (lambda (proc data) (let* ((string
-              (mastodon-async--stream-filter
-               (mastodon-async--http-layer proc data)))
-             (queue-string (mastodon-async--cycle-queue string)))
-    (when queue-string
-      (mastodon-async--output-toot
-       (funcall filter queue-string)))))))
+    (lambda (proc data)
+      (with-current-buffer (process-buffer proc)
+        (let* ((string
+                (mastodon-async--stream-filter
+                 (mastodon-async--http-layer proc data)))
+               (queue-string (mastodon-async--cycle-queue string)))        
+          (when queue-string
+            (mastodon-async--output-toot
+             (funcall filter queue-string))))))))
 
 
 (defun mastodon-async--process-queue-string (string)
@@ -222,7 +264,7 @@ Then determine if a full message has been recived.  If so return it.
 Full messages are seperated by two newlines"
     (with-current-buffer mastodon-async--queue
       (goto-char (max-char))
-      (insert string)
+      (insert (decode-coding-string string 'utf-8))
       (goto-char 0)
       (let((next(re-search-forward "\n\n" nil t)))
         (when next
@@ -235,7 +277,7 @@ Full messages are seperated by two newlines"
   "Passes PROC and DATA to ‘url-http-generic-filter’.
 
 It then processes its output."
-  (with-current-buffer (process-buffer proc)
+  (with-current-buffer (process-buffer proc)    
     (let ((start (max 1 ( - (point-max) 2))))
       (url-http-generic-filter proc data)
       (when (> url-http-end-of-headers start)
