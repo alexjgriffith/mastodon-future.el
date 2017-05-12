@@ -110,12 +110,12 @@
   (let ((toot (mastodon-tl--field 'status note)))
   (insert
    (concat
-    "Congratulations, you have a new follower!"
+    (propertize "Congratulations, you have a new follower!\n\n" 'face 'default)
     (mastodon-notifications--byline note "Follows")
     "\n\n"))))
 
 
-(defun mastodon-notifications--favorite(note)
+(defun mastodon-notifications--favorite (note)
   "Format for a `favorite' NOTE."
   (let ((toot (mastodon-tl--field 'status note)))
     (insert
