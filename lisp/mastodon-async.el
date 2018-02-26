@@ -171,23 +171,28 @@ Argument NAME the center portion of the buffer name for *mastodon-async-buffer a
         (buffer-name (concat "*mastodon-async-buffer-" name "*")))
     (mastodon-async--set-local-variables buffer-name http-buffer
                                          buffer-name queue-name)
-    (with-current-buffer buffer-name
-      (setq mastodon-tl--enable-relative-timestamps nil)
-      (setq mastodon-tl--display-media-p nil)
-      (mastodon-async-mode t))))
+    (with-current-buffer (get-buffer-create buffer-name)
+      (mastodon-async-mode t))
+))
 
 (defun mastodon-async--start-process (endpoint filter &optional name)
   "Start an async mastodon stream at ENDPOINT.
-Filter the toots using FILTER."
+Filter the toots using FILTER."  
+  (with-current-buffer (get-buffer-create
+                         (concat "*mastodon-async-buffer-"
+                                 (or name endpoint) "*"))    
+    (make-local-variable 'mastodon-tl--enable-relative-timestamps)
+    (make-local-variable 'mastodon-tl--display-media-p)
+    (mastodon-mode)
+    (setq-local mastodon-tl--enable-relative-timestamps nil)
+    (setq-local mastodon-tl--display-media-p nil))
   (let ((http-buffer (mastodon-async--get
                       (mastodon-http--api endpoint)
                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
-    ;; Set the local variables in each of the three
-    ;; buffers
-    (message (format "HTTP buffer: %s" http-buffer))
-    (mastodon-async--setup-http  http-buffer (or name endpoint))
+
+    (mastodon-async--setup-buffer  http-buffer (or name endpoint))    
     (mastodon-async--setup-queue  http-buffer (or name endpoint))
-    (mastodon-async--setup-buffer  http-buffer (or name endpoint))
+    (mastodon-async--setup-http  http-buffer (or name endpoint))
     (with-current-buffer (get-buffer (concat "*mastodon-async-buffer-"
                                              (or name endpoint)
                                              "*"))
@@ -246,9 +251,12 @@ Filter the toots using FILTER."
                (string-with-nl
                 (concat
                  (mastodon-tl--spoiler toot)
-                 (mastodon-tl--content toot)
-                 (when mastodon-tl--display-media-p
-                   (mastodon-tl--media toot))
+                 (substring (mastodon-tl--content toot) 0 -2)
+                 (when (not mastodon-tl--display-media-p)
+                   (concat (mastodon-tl--media toot)
+                           "\n"  ;; these new lines are needed to keep
+                           "\n") ;; navigation working
+                   )
                  (mastodon-tl--byline toot)
                  "\n\n"))
                (string
@@ -313,7 +321,7 @@ It then processes its output."
   (goto-char start)
   (let (line-coordinates)
     (while
-        (setq line-coordinates (mastodon-media--select-next-media-line end))
+        (setq line-coordinates (mastodon-media--select-next-media-line))
       (let ((link (mastodon-media--line-to-link line-coordinates)))
         (when (mastodon-media--valid-link-p link)
           (mastodon-async--get-image link (or buffer (current-buffer))))))))
