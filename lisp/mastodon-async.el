@@ -1,5 +1,4 @@
-;;; -*- lexical-binding: t -*-
-;;; mastodon-async.el --- Client for Mastodon
+;;; mastodon-async.el --- Client for Mastodon -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2017 Johnson Denen
 ;; Author: Johnson Denen <johnson.denen@gmail.com>
@@ -27,6 +26,9 @@
 ;;; Commentary:
 
 ;; Bug, mastodon-async--html-buffer not properly defined
+
+;; Requires extensive documentation
+;; Rework sync code so it does not mess up the async-buffer
 
 ;;; Code:
 
@@ -112,7 +114,7 @@
   "Display TIMELINE in buffer."
   (let* ((url (mastodon-http--api (concat "timelines/" timeline)))
          (buffer mastodon-async--buffer)
-         (json (mastodon-http--get-json url)))    
+         (json (mastodon-http--get-json url)))
     (with-output-to-temp-buffer buffer
       (switch-to-buffer buffer)
       (mastodon-tl--timeline json))))
@@ -121,21 +123,16 @@
   "Make sure that the previous async process has been closed.
 
 Then Start an async mastodon stream at ENDPOINT filtering toots
-using FILTER."
-  ;; (when (get-buffer mastodon-async--http-buffer)
-  ;;   (progn (mastodon-async--stop-http)
-  ;;          (when (get-buffer mastodon-async--buffer)
-  ;;            (with-current-buffer mastodon-async--buffer
-  ;;              (let ((inhibit-read-only t))
-  ;;                (delete-region 1 (point-max)))))))  
+using FILTER.
+Argument TIMELINE a specific target, such as federated or home.
+Argument NAME the center portion of the buffer name for *mastodon-async-buffer and *mastodon-async-queueu."
   (let ((buffer (mastodon-async--start-process
                  (concat "streaming/" endpoint) filter name)))
     (with-current-buffer buffer
       (mastodon-async--display-buffer)
       (goto-char (point-max))
-      ;;(mastodon-async--sync-get timeline)
       (when mastodon-tl--display-media-p
-         (mastodon-async--inline-images 1 (point-max)))
+        (mastodon-async--inline-images 1 (point-max)))
       (goto-char 1))))
 
 (defun mastodon-async--get (url callback)
@@ -183,8 +180,8 @@ using FILTER."
   "Start an async mastodon stream at ENDPOINT.
 Filter the toots using FILTER."
   (let ((http-buffer (mastodon-async--get
-                 (mastodon-http--api endpoint)
-                 (lambda (status) (message "HTTP SOURCE CLOSED")))))
+                      (mastodon-http--api endpoint)
+                      (lambda (status) (message "HTTP SOURCE CLOSED")))))
     ;; Set the local variables in each of the three
     ;; buffers
     (message (format "HTTP buffer: %s" http-buffer))
@@ -207,7 +204,7 @@ Filter the toots using FILTER."
         (let* ((string
                 (mastodon-async--stream-filter
                  (mastodon-async--http-layer proc data)))
-               (queue-string (mastodon-async--cycle-queue string)))        
+               (queue-string (mastodon-async--cycle-queue string)))
           (when queue-string
             (mastodon-async--output-toot
              (funcall filter queue-string))))))))
@@ -236,10 +233,10 @@ Filter the toots using FILTER."
   (not(string-match-p
        "@"
        (cdr(assoc 'acct (cdr (assoc 'account json)))))))
- 
-  
+
+
 (defun mastodon-async--output-toot (toot)
-  "Process TOOT and prepend it to the async user facing buffer."  
+  "Process TOOT and prepend it to the async user facing buffer."
   (if (not(bufferp (get-buffer mastodon-async--buffer)))
       (mastodon-async--stop-http)
     (when toot
@@ -254,7 +251,7 @@ Filter the toots using FILTER."
                    (mastodon-tl--media toot))
                  (mastodon-tl--byline toot)
                  "\n\n"))
-               (string 
+               (string
                 (replace-regexp-in-string
                  "\n\n\n | " "\n | " string-with-nl))
                (offset (length string)))
@@ -262,7 +259,7 @@ Filter the toots using FILTER."
           (when (stringp string)
             (insert string))
           (when mastodon-tl--display-media-p
-             (mastodon-async--inline-images 1 offset))
+            (mastodon-async--inline-images 1 offset))
           (if (equal 1 previous)
               (goto-char 1)
             (goto-char (+ offset previous))))))))
@@ -272,22 +269,22 @@ Filter the toots using FILTER."
 
 Then determine if a full message has been recived.  If so return it.
 Full messages are seperated by two newlines"
-    (with-current-buffer mastodon-async--queue
-      (goto-char (max-char))
-      (insert (decode-coding-string string 'utf-8))
-      (goto-char 0)
-      (let((next(re-search-forward "\n\n" nil t)))
-        (when next
-          (let ((return-string (buffer-substring 1 next))
-                (inhibit-read-only t))
-            (delete-region 1 next)
-            return-string)))))
+  (with-current-buffer mastodon-async--queue
+    (goto-char (max-char))
+    (insert (decode-coding-string string 'utf-8))
+    (goto-char 0)
+    (let((next(re-search-forward "\n\n" nil t)))
+      (when next
+        (let ((return-string (buffer-substring 1 next))
+              (inhibit-read-only t))
+          (delete-region 1 next)
+          return-string)))))
 
 (defun mastodon-async--http-layer (proc data)
   "Passes PROC and DATA to ‘url-http-generic-filter’.
 
 It then processes its output."
-  (with-current-buffer (process-buffer proc)    
+  (with-current-buffer (process-buffer proc)
     (let ((start (max 1 ( - (point-max) 2))))
       (url-http-generic-filter proc data)
       (when (> url-http-end-of-headers start)
@@ -333,15 +330,15 @@ It then processes its output."
   (let ((loc nil)
         (inhibit-read-only t)
         (previous (point)))
-     (goto-char 1)
+    (goto-char 1)
     (when (setq loc (re-search-forward (concat "Media_Link:: " url)))
       (goto-char loc)
-      (kill-whole-line)      
+      (kill-whole-line)
       (insert-image (create-image data nil t))
       (insert "\n")
       (if (equal 1 previous)
-            (goto-char 1)
-          (goto-char (+ 1 previous))))))
+          (goto-char 1)
+        (goto-char (+ 1 previous))))))
 
 (provide 'mastodon-async)
 ;;; mastodon-async.el ends here
