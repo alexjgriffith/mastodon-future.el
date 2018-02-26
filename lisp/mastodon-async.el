@@ -107,6 +107,7 @@
    "local"
    'mastodon-async--process-queue-local-string))
 
+;; needs to be rewritten with async in mind
 (defun mastodon-async--sync-get (timeline)
   "Display TIMELINE in buffer."
   (let* ((url (mastodon-http--api (concat "timelines/" timeline)))
@@ -132,10 +133,10 @@ using FILTER."
     (with-current-buffer buffer
       (mastodon-async--display-buffer)
       (goto-char (point-max))
-      (mastodon-async--sync-get timeline)
-      (mastodon-async--inline-images 1 (point-max))  
-      (goto-char 1)
-      )))
+      ;;(mastodon-async--sync-get timeline)
+      (when mastodon-tl--display-media-p
+         (mastodon-async--inline-images 1 (point-max)))
+      (goto-char 1))))
 
 (defun mastodon-async--get (url callback)
   "An async get targeted at URL with a CALLBACK."
@@ -169,27 +170,34 @@ using FILTER."
                                          buffer-name queue-name)))
 
 (defun mastodon-async--setup-buffer (http-buffer name)
-  (let ((queue-name(concat "*mastodon-async-queue-" name "*"))
-        (buffer-name(concat "*mastodon-async-buffer-" name "*")))
+  (let ((queue-name (concat "*mastodon-async-queue-" name "*"))
+        (buffer-name (concat "*mastodon-async-buffer-" name "*")))
     (mastodon-async--set-local-variables buffer-name http-buffer
                                          buffer-name queue-name)
-    (with-current-buffer buffer-name      
+    (with-current-buffer buffer-name
+      (setq mastodon-tl--enable-relative-timestamps nil)
+      (setq mastodon-tl--display-media-p nil)
       (mastodon-async-mode t))))
 
 (defun mastodon-async--start-process (endpoint filter &optional name)
   "Start an async mastodon stream at ENDPOINT.
 Filter the toots using FILTER."
-  (let ((buffer (mastodon-async--get
+  (let ((http-buffer (mastodon-async--get
                  (mastodon-http--api endpoint)
-                 (lambda (status) status))))
+                 (lambda (status) (message "HTTP SOURCE CLOSED")))))
     ;; Set the local variables in each of the three
     ;; buffers
-    (mastodon-async--setup-http  buffer (or name endpoint))
-    (mastodon-async--setup-queue  buffer (or name endpoint))
-    (mastodon-async--setup-buffer  buffer (or name endpoint))    
-    (set-process-filter (get-buffer-process buffer)
+    (message (format "HTTP buffer: %s" http-buffer))
+    (mastodon-async--setup-http  http-buffer (or name endpoint))
+    (mastodon-async--setup-queue  http-buffer (or name endpoint))
+    (mastodon-async--setup-buffer  http-buffer (or name endpoint))
+    (with-current-buffer (get-buffer (concat "*mastodon-async-buffer-"
+                                             (or name endpoint)
+                                             "*"))
+      (message (format "HTTP buffer 2: %s" mastodon-async--http-buffer)))
+    (set-process-filter (get-buffer-process http-buffer)
                         (mastodon-async--http-hook filter))
-    buffer))
+    http-buffer))
 
 (defun mastodon-async--http-hook (filter)
   "Return a lambda with a custom FILTER for processing toots."
@@ -242,7 +250,8 @@ Filter the toots using FILTER."
                 (concat
                  (mastodon-tl--spoiler toot)
                  (mastodon-tl--content toot)
-                 (mastodon-tl--media toot)
+                 (when mastodon-tl--display-media-p
+                   (mastodon-tl--media toot))
                  (mastodon-tl--byline toot)
                  "\n\n"))
                (string 
@@ -252,7 +261,8 @@ Filter the toots using FILTER."
           (goto-char 1)
           (when (stringp string)
             (insert string))
-          (mastodon-async--inline-images 1 offset)
+          (when mastodon-tl--display-media-p
+             (mastodon-async--inline-images 1 offset))
           (if (equal 1 previous)
               (goto-char 1)
             (goto-char (+ offset previous))))))))
