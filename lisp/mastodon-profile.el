@@ -88,7 +88,8 @@
   "Generate an image from a STATUS."
   (let ((url (cdr(assoc 'avatar_static status))))
     (unless (equal url "/avatars/original/missing.png")
-      (mastodon-media--image-from-url url))))
+      ;;(mastodon-media--image-from-url url)
+      )))
 
 (defun mastodon-profile--field (status field)
   "The STATUS is a nested alist.
