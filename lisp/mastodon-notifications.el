@@ -33,6 +33,7 @@
 ;;         example
 ;;       - fix thread access
 ;;       - Add keybinding of mastodon-notifications--get to `N'
+;;       - boosted still broken
 
 ;; ;; One approach for generalizing the get-more functionality
 ;; (defun mastodon-tl--get-more (more-function id-fun goto-fun

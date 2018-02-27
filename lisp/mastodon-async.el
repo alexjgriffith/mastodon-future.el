@@ -185,7 +185,7 @@ Filter the toots using FILTER."
     (make-local-variable 'mastodon-tl--display-media-p)
     (mastodon-mode)
     (setq-local mastodon-tl--enable-relative-timestamps nil)
-    (setq-local mastodon-tl--display-media-p nil))
+    (setq-local mastodon-tl--display-mediaq-p nil))
   (let ((http-buffer (mastodon-async--get
                       (mastodon-http--api endpoint)
                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
@@ -224,7 +224,9 @@ Filter the toots using FILTER."
          (data (replace-regexp-in-string
                 "^data: " "" (cadr split-strings))))
     (when (equal "update" event-type)
-      (json-read-from-string data))))
+      ;; in some casses the data is not fully formed
+      ;; for now return nil if malformed using `ignore-errors' 
+      (ignore-errors (json-read-from-string data)))))
 
 (defun mastodon-async--process-queue-local-string (string)
   "Use STRING to limit the public endpoint to displaying local steams only."
@@ -331,7 +333,9 @@ It then processes its output."
   (search-forward "\n\n")
   (let((data (buffer-substring (point) (point-max))))
     (with-current-buffer buffer
-      (mastodon-async--find-and-replace-image url data))))
+      (ignore-errors
+        (message (format "%s" url))
+        (mastodon-async--find-and-replace-image url data)))))
 
 
 (defun mastodon-async--find-and-replace-image (url data)
@@ -339,7 +343,7 @@ It then processes its output."
         (inhibit-read-only t)
         (previous (point)))
     (goto-char 1)
-    (when (setq loc (re-search-forward (concat "Media_Link:: " url)))
+    (when (setq loc (re-search-forward (concat "^Media::" url)))
       (goto-char loc)
       (kill-whole-line)
       (insert-image (create-image data nil t))
@@ -347,6 +351,36 @@ It then processes its output."
       (if (equal 1 previous)
           (goto-char 1)
         (goto-char (+ 1 previous))))))
+
+
+;; Move to async-media
+;; (defun mastodon-media--select-next-media-line (&optional end)
+;;   (mastodon-media--select-media-line (point) end))
+
+;; (defun mastodon-media--select-media-line (start &optional end)
+;;   "Returns the list of line coordinates of a line that
+;; contains `Media::'."
+;;   ;;(when start (goto-char (point-min)))
+;;   (goto-char start)
+;;   (let ((line (search-forward-regexp "^Media::" end t nil)))
+;;     (when line
+;;       (let ((start (progn (move-beginning-of-line '()) (point)))
+;;             (end (progn (move-end-of-line '()) (point))))
+;;         (list start end)))))
+
+;; (defun mastodon-media--line-to-link (line)
+;;     "Removes the identifier from the media line leaving
+;; just a url."
+;;   (replace-regexp-in-string "Media::" ""
+;; 			    (buffer-substring
+;; 			     (car line)
+;; 			     (cadr line))))
+
+;; (defun mastodon-media--valid-link-p (link)
+;;   "Checks to make sure that the missing string has
+;; not been returned."
+;;   (let((missing "/files/small/missing.png"))
+;;     (not(equal link missing))))
 
 (provide 'mastodon-async)
 ;;; mastodon-async.el ends here
