@@ -131,8 +131,6 @@ Argument NAME the center portion of the buffer name for *mastodon-async-buffer a
     (with-current-buffer buffer
       (mastodon-async--display-buffer)
       (goto-char (point-max))
-      (when mastodon-tl--display-media-p
-        (mastodon-async--inline-images 1 (point-max)))
       (goto-char 1))))
 
 (defun mastodon-async--get (url callback)
@@ -268,8 +266,6 @@ Filter the toots using FILTER."
           (goto-char 1)
           (when (stringp string)
             (insert string))
-          (when mastodon-tl--display-media-p
-            (mastodon-async--inline-images 1 offset))
           (if (equal 1 previous)
               (goto-char 1)
             (goto-char (+ offset previous))))))))
@@ -305,82 +301,6 @@ It then processes its output."
 (defun mastodon-async--stream-filter (string)
   "Remove comments from STRING."
   (replace-regexp-in-string  "^:.*\n" "" string))
-
-(defun mastodon-async--inline-images-region ()
-  (interactive)
-  (mastodon-async--inline-images (region-beginning) (region-end) (current-buffer)))
-
-(defun mastodon-async--inline-images-buffer ()
-  (interactive)
-  (mastodon-async--inline-images 1 (point-max) (current-buffer)))
-
-
-(defun mastodon-async--get-image (link &optional buffer)
-  (url-retrieve link 'mastodon-async--image-callback
-                (list link (or buffer (current-buffer))) t))
-
-(defun mastodon-async--inline-images (start end &optional buffer)
-  (goto-char start)
-  (let (line-coordinates)
-    (while
-        (setq line-coordinates (mastodon-media--select-next-media-line))
-      (let ((link (mastodon-media--line-to-link line-coordinates)))
-        (when (mastodon-media--valid-link-p link)
-          (mastodon-async--get-image link (or buffer (current-buffer))))))))
-
-(defun mastodon-async--image-callback (data url buffer)
-  (goto-char (point-min))
-  (search-forward "\n\n")
-  (let((data (buffer-substring (point) (point-max))))
-    (with-current-buffer buffer
-      (ignore-errors
-        (message (format "%s" url))
-        (mastodon-async--find-and-replace-image url data)))))
-
-
-(defun mastodon-async--find-and-replace-image (url data)
-  (let ((loc nil)
-        (inhibit-read-only t)
-        (previous (point)))
-    (goto-char 1)
-    (when (setq loc (re-search-forward (concat "^Media::" url)))
-      (goto-char loc)
-      (kill-whole-line)
-      (insert-image (create-image data nil t))
-      (insert "\n")
-      (if (equal 1 previous)
-          (goto-char 1)
-        (goto-char (+ 1 previous))))))
-
-
-;; Move to async-media
-;; (defun mastodon-media--select-next-media-line (&optional end)
-;;   (mastodon-media--select-media-line (point) end))
-
-;; (defun mastodon-media--select-media-line (start &optional end)
-;;   "Returns the list of line coordinates of a line that
-;; contains `Media::'."
-;;   ;;(when start (goto-char (point-min)))
-;;   (goto-char start)
-;;   (let ((line (search-forward-regexp "^Media::" end t nil)))
-;;     (when line
-;;       (let ((start (progn (move-beginning-of-line '()) (point)))
-;;             (end (progn (move-end-of-line '()) (point))))
-;;         (list start end)))))
-
-;; (defun mastodon-media--line-to-link (line)
-;;     "Removes the identifier from the media line leaving
-;; just a url."
-;;   (replace-regexp-in-string "Media::" ""
-;; 			    (buffer-substring
-;; 			     (car line)
-;; 			     (cadr line))))
-
-;; (defun mastodon-media--valid-link-p (link)
-;;   "Checks to make sure that the missing string has
-;; not been returned."
-;;   (let((missing "/files/small/missing.png"))
-;;     (not(equal link missing))))
 
 (provide 'mastodon-async)
 ;;; mastodon-async.el ends here
