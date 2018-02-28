@@ -109,16 +109,6 @@
    "local"
    'mastodon-async--process-queue-local-string))
 
-;; needs to be rewritten with async in mind
-(defun mastodon-async--sync-get (timeline)
-  "Display TIMELINE in buffer."
-  (let* ((url (mastodon-http--api (concat "timelines/" timeline)))
-         (buffer mastodon-async--buffer)
-         (json (mastodon-http--get-json url)))
-    (with-output-to-temp-buffer buffer
-      (switch-to-buffer buffer)
-      (mastodon-tl--timeline json))))
-
 (defun mastodon-async--mastodon (endpoint timeline name filter)
   "Make sure that the previous async process has been closed.
 
@@ -238,7 +228,6 @@ Filter the toots using FILTER."
   (not(string-match-p
        "@"
        (cdr(assoc 'acct (cdr (assoc 'account json)))))))
-
 
 (defun mastodon-async--output-toot (toot)
   "Process TOOT and prepend it to the async user facing buffer."
