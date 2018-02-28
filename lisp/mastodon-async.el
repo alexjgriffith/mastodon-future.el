@@ -173,7 +173,7 @@ Filter the toots using FILTER."
     (make-local-variable 'mastodon-tl--display-media-p)
     (mastodon-mode)
     (setq-local mastodon-tl--enable-relative-timestamps nil)
-    (setq-local mastodon-tl--display-mediaq-p nil))
+    (setq-local mastodon-tl--display-mediaq-p t))
   (let ((http-buffer (mastodon-async--get
                       (mastodon-http--api endpoint)
                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
@@ -201,7 +201,6 @@ Filter the toots using FILTER."
           (when queue-string
             (mastodon-async--output-toot
              (funcall filter queue-string))))))))
-
 
 (defun mastodon-async--process-queue-string (string)
   "Parse the output STRING of the queue buffer."
@@ -236,23 +235,13 @@ Filter the toots using FILTER."
     (when toot
       (with-current-buffer mastodon-async--buffer
         (let* ((inhibit-read-only t)
-               (previous (point))
-               (string-with-nl
-                (concat
-                 (mastodon-tl--spoiler toot)
-                 (substring (mastodon-tl--content toot) 0 -2)
-                 (when (not mastodon-tl--display-media-p)
-                   (concat (mastodon-tl--media toot)
-                           "\n"  ;; these new lines are needed to keep
-                           "\n") ;; navigation working
-                   )
-                 (mastodon-tl--byline toot)
-                 "\n\n"))
+               (previous (point))               
                (string
-                (replace-regexp-in-string
-                 "\n\n\n | " "\n | " string-with-nl))
+                (with-temp-buffer
+                  (mastodon-tl--timeline (list toot))
+                  (buffer-string)))
                (offset (length string)))
-          (goto-char 1)
+          (goto-char (point-min))
           (when (stringp string)
             (insert string))
           (if (equal 1 previous)
