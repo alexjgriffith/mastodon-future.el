@@ -56,7 +56,6 @@
  (defvar mastodon-async--http-buffer "" ;;""
    "Buffer variable bound to http output."))
 
-
 (defun mastodon-async--display-http ()
   "Display the async HTTP input buffer."
   (display-buffer mastodon-async--http-buffer))
@@ -173,7 +172,7 @@ Filter the toots using FILTER."
     (make-local-variable 'mastodon-tl--display-media-p)
     (mastodon-mode)
     (setq-local mastodon-tl--enable-relative-timestamps nil)
-    (setq-local mastodon-tl--display-mediaq-p nil))
+    (setq-local mastodon-tl--display-media-p nil))
   (let ((http-buffer (mastodon-async--get
                       (mastodon-http--api endpoint)
                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
@@ -191,7 +190,7 @@ Filter the toots using FILTER."
 
 (defun mastodon-async--http-hook (filter)
   "Return a lambda with a custom FILTER for processing toots."
-  (lexical-let ((filter filter))
+  (let ((filter filter))
     (lambda (proc data)
       (with-current-buffer (process-buffer proc)
         (let* ((string
@@ -235,20 +234,15 @@ Filter the toots using FILTER."
     (when toot
       (with-current-buffer mastodon-async--buffer
         (let* ((inhibit-read-only t)
-               (previous (point))               
-               (string
-                (with-temp-buffer                  
-                  (let  ((mastodon-tl--enable-relative-timestamps nil)
-                         (mastodon-tl--display-media-p nil))
-                    (mastodon-tl--timeline (list toot))
-                    (buffer-string))))
-               (offset (length string)))
-          (goto-char (point-min))
-          (when (stringp string)
-            (insert string))
-          (if (equal 1 previous)
-              (goto-char 1)
-            (goto-char (+ offset previous))))))))
+               (old-max (point-max))
+               (previous (point))
+               (mastodon-tl--enable-relative-timestamps nil)
+               (mastodon-tl--display-media-p t))
+	  (goto-char (point-min))          
+	  (mastodon-tl--timeline (list toot))
+          (if (equal previous 1)
+	      (goto-char 1)
+            (goto-char (+ previous (- (point-max) old-max)))))))))
 
 (defun mastodon-async--cycle-queue (string)
   "Append the most recent STRING from http buffer to queue buffer.
