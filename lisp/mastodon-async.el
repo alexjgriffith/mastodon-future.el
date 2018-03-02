@@ -176,7 +176,7 @@ Filter the toots using FILTER."
   (let ((http-buffer (mastodon-async--get
                       (mastodon-http--api endpoint)
                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
-
+    (message (format "%s" (mastodon-http--api endpoint)))
     (mastodon-async--setup-buffer  http-buffer (or name endpoint))    
     (mastodon-async--setup-queue  http-buffer (or name endpoint))
     (mastodon-async--setup-http  http-buffer (or name endpoint))
