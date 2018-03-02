@@ -25,15 +25,15 @@
 
 ;; mastodon-profile.el generates stream of users toots.
 ;; To fix
-;; 1. Render Image at top of frame
-;; 2. Get toot author
-;; 3. Load more toots
+;; 1. Render Image at top of frame [x]
+;; 2. Get toot author [x]
+;; 3. Load more toots [x]
 ;; Later
-;; 1. List followers
-;; 2. List people they follow
+;; 1. List followers [x]
+;; 2. List people they follow [x]
 ;; 3. Option to follow
 ;; 4. wheather they follow you or not
-;; 5. Media
+;; 5. Show only Media
 
 ;;; Code:
 
@@ -48,7 +48,10 @@
 (defun mastodon-profile--toot-proporties ()
   "Get the next by-line plist."
   (interactive)
-  (elt (text-properties-at (mastodon-tl--goto-next-toot)) 5))
+  (let ((toot-proporties (plist-get (text-properties-at (point)) 'toot-json)))
+    (if toot-proporties
+        toot-proporties
+      (plist-get (text-properties-at (mastodon-tl--goto-next-toot)) 'toot-json))))
 
 ;; TODO: split this function up so it can handle also showing
 ;; followers and those they follow
@@ -67,18 +70,25 @@
          (json (mastodon-http--get-json url)))
     (with-output-to-temp-buffer buffer
       (switch-to-buffer buffer)
-      (mastodon-profile--image-from-status account)
-      (insert "\n | ")
-      (insert (mastodon-tl--byline-author status))
+      (mastodon-mode)
+      (setq mastodon-tl--buffer-spec
+            `(buffer-name ,buffer
+                          endpoint ,(format "accounts/%s/statuses" id)
+                          update-function
+                          ,'mastodon-tl--timeline json))
+      (insert "\n")
+      (insert (mastodon-profile--image-from-status account))
+      (insert "\n  ")
+      (insert (let ((mastodon-tl--display-media-p nil))
+                (mastodon-tl--byline-author status)))
       (insert "\n ------------\n")
       (insert (mastodon-profile--process-text note))
       (insert (mastodon-tl--set-face
        (concat " ------------\n"
                "     TOOTS   \n"
                " ------------\n")
-       'success 'nil))
+       'success 'nil))       
       (mastodon-tl--timeline json))
-    (mastodon-mode)
     (mastodon-tl--goto-next-toot)))
 
 (defun mastodon-profile--process-text (text)
@@ -98,8 +108,7 @@
   "Generate an image from a STATUS."
   (let ((url (cdr(assoc 'avatar_static status))))
     (unless (equal url "/avatars/original/missing.png")
-      ;;(mastodon-media--image-from-url url)
-      )))
+      (mastodon-media--get-media-link-rendering url))))
 
 (defun mastodon-profile--field (status field)
   "The STATUS is a nested alist.
@@ -111,6 +120,56 @@ FIELD is used to identify regions under 'account"
   "Get the author id of the next toot."
   (interactive)
   (get-authour-id (toot-proporties)))
+
+(defun mastodon-profile--add-author-bylines (tootv)
+  "Covnvert TOOTV into an author-byline and insert."
+      (mapc (lambda(toot)
+              (insert (propertize (mastodon-tl--byline-author
+                                   (list (append (list 'account) toot)))
+                                  'toot-id (cdr(assoc 'id toot)) 'toot-json toot)
+                      "\n"))
+            tootv)
+      (mastodon-media--inline-images))
+
+;; Clean these two functions up. They are basically identical.
+(defun mastodon-profile--get-following ()
+  "Request a list of those who the user under point follows."
+  (interactive)
+  (let* ((id (mastodon-profile--field (mastodon-profile--toot-proporties) 'id))
+         (acct (mastodon-profile--field (mastodon-profile--toot-proporties) 'acct))
+         (buffer (format "*following-%s*" acct))
+         (tootv (mastodon-http--get-json
+                (mastodon-http--api (format "accounts/%s/following"
+                                            id)))))
+    (with-output-to-temp-buffer buffer
+      (switch-to-buffer buffer)
+      (mastodon-mode)
+      (setq mastodon-tl--buffer-spec
+            `(buffer-name ,buffer
+                          endpoint ,(format "accounts/%s/following" id)
+                          update-function
+                          ,'mastodon-profile--add-author-bylines))     
+      (mastodon-profile--add-author-bylines tootv))))
+
+(defun mastodon-profile--get-followers ()
+  "Request a list of those following the user under point."
+  (interactive)
+  (let* ((id (mastodon-profile--field (mastodon-profile--toot-proporties) 'id))
+         (acct (mastodon-profile--field (mastodon-profile--toot-proporties) 'acct))
+         (buffer (format "*followers-%s*" acct))
+         (tootv (mastodon-http--get-json
+                (mastodon-http--api (format "accounts/%s/followers"
+                                            id)))))
+    (with-output-to-temp-buffer buffer
+      (switch-to-buffer buffer)
+      (mastodon-mode)
+      (setq mastodon-tl--buffer-spec
+            `(buffer-name ,buffer
+                          endpoint ,(format "accounts/%s/followers" id)
+                          update-function
+                          ,'mastodon-profile--add-author-bylines))
+      (mastodon-profile--add-author-bylines tootv))))
+
 
 (provide 'mastodon-profile)
 ;;; mastodon-profile.el ends here
