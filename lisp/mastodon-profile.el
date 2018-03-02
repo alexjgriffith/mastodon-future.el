@@ -24,6 +24,16 @@
 ;;; Commentary:
 
 ;; mastodon-profile.el generates stream of users toots.
+;; To fix
+;; 1. Render Image at top of frame
+;; 2. Get toot author
+;; 3. Load more toots
+;; Later
+;; 1. List followers
+;; 2. List people they follow
+;; 3. Option to follow
+;; 4. wheather they follow you or not
+;; 5. Media
 
 ;;; Code:
 

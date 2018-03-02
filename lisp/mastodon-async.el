@@ -79,13 +79,16 @@
     (setq mastodon-async--http-buffer "")
     (kill-buffer mastodon-async--queue)))
 
-(defun mastodon-async--stream-home ()
+;; Need to handle the notification event
+;; The output can be passed to notifications
+;; need an alternate process-queue-string function
+(defun mastodon-async--stream-notifications ()
   "Open a stream of Home."
   (interactive)
   (mastodon-async--mastodon
    "user"
    "home"
-   "home"
+   "notifications"
    'mastodon-async--process-queue-string))
 
 (defun mastodon-async--stream-federated ()
