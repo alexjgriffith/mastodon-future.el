@@ -172,7 +172,7 @@ Filter the toots using FILTER."
     (make-local-variable 'mastodon-tl--display-media-p)
     (mastodon-mode)
     (setq-local mastodon-tl--enable-relative-timestamps nil)
-    (setq-local mastodon-tl--display-media-p nil))
+    (setq-local mastodon-tl--display-media-p t))
   (let ((http-buffer (mastodon-async--get
                       (mastodon-http--api endpoint)
                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
@@ -236,7 +236,7 @@ Filter the toots using FILTER."
         (let* ((inhibit-read-only t)
                (old-max (point-max))
                (previous (point))
-               (mastodon-tl--enable-relative-timestamps nil)
+               (mastodon-tl--enable-relative-timestamps t)
                (mastodon-tl--display-media-p t))
 	  (goto-char (point-min))          
 	  (mastodon-tl--timeline (list toot))
