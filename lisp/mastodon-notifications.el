@@ -44,14 +44,14 @@
     ("follow" . mastodon-notifications--follow)
     ("favourite" . mastodon-notifications--favourite)
     ("reblog" . mastodon-notifications--reblog))
-  "Alist of notification types that have been implemented.")
+  "Alist of notification types and their corresponding function.")
 
 (defvar mastodon-notifications--response-alist
   '(("Mentioned" . "you")
     ("Followed" . "you")
     ("Favourited" . "your status")
     ("Boosted" . "your status"))
-  "Alist of responses for notification types.")
+  "Alist of subjects for notification types.")
 
 (defun mastodon-notifications--byline-concat (toot message)
   "Add byline for TOOT with MESSAGE."
@@ -109,7 +109,7 @@
     "\n\n")))
 
 (defun mastodon-notifications--favourite (note)
-  "Format for a `favorite' NOTE."
+  "Format for a `favourite' NOTE."
   (let ((toot (mastodon-tl--field 'status note)))
     (insert
      (mastodon-tl--content toot) "\n"
