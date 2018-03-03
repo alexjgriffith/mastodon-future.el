@@ -1,4 +1,4 @@
-;;; mastodon-profile.el --- Functions for inspecting Mastodon profiles
+;;; mastodon-profile.el --- Functions for inspecting Mastodon profiles -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2017 Johnson Denen
 ;; Author: Johnson Denen <johnson.denen@gmail.com>
