@@ -24,7 +24,7 @@
 
 ;;; Commentary:
 
-;; mastodon-notification.el provides notification functions.
+;; mastodon-notification.el provides notification functions for Mastodon.
 
 ;; todo: - Add keybinding of mastodon-notifications--get to `N'
 
@@ -46,13 +46,20 @@
     ("reblog" . mastodon-notifications--reblog))
   "Alist of notification types that have been implemented.")
 
+(defvar mastodon-notifications--response-alist
+  '(("Mentioned" . "you")
+    ("Followed" . "you")
+    ("Favourited" . "your status")
+    ("Boosted" . "your status"))
+  "Alist of responses for notification types.")
+
 (defun mastodon-notifications--byline-concat (toot message)
   "Add byline for TOOT with MESSAGE."
       (concat
        " "
        (propertize message 'face 'highlight)
        " "
-       "You!"))
+       (cdr (assoc message mastodon-notifications--response-alist))))
 
 (defun mastodon-notifications--byline (toot message)
   "Generate byline from TOOT based on MESSAGE for notification."
@@ -98,7 +105,7 @@
   (let ((toot (mastodon-tl--field 'status note)))
   (insert
     (propertize "Congratulations, you have a new follower!\n\n" 'face 'default)
-    (mastodon-notifications--byline note "Follows")
+    (mastodon-notifications--byline note "Followed")
     "\n\n")))
 
 (defun mastodon-notifications--favourite (note)
@@ -106,7 +113,7 @@
   (let ((toot (mastodon-tl--field 'status note)))
     (insert
      (mastodon-tl--content toot) "\n"
-     (mastodon-notifications--byline note "Favorited")
+     (mastodon-notifications--byline note "Favourited")
              "\n\n")))
 
 (defun mastodon-notifications--reblog (note)
