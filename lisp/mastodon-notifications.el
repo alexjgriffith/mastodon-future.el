@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2017 Johnson Denen
 ;; Author: Johnson Denen <johnson.denen@gmail.com>
-;; Version: 0.7.1
+;; Version: 0.7.2
 ;; Homepage: https://github.com/jdenen/mastodon.el
 
 ;; This file is not part of GNU Emacs.
@@ -53,108 +53,90 @@
     ("Boosted" . "your status"))
   "Alist of subjects for notification types.")
 
-(defun mastodon-notifications--byline-concat (toot message)
+(defun mastodon-notifications--byline-concat (message)
   "Add byline for TOOT with MESSAGE."
-      (concat
-       " "
-       (propertize message 'face 'highlight)
-       " "
-       (cdr (assoc message mastodon-notifications--response-alist))))
-
-(defun mastodon-notifications--byline (toot message)
-  "Generate byline from TOOT based on MESSAGE for notification."
-  (let ((id (cdr (assoc 'id toot)))
-        (parsed-time (date-to-time (mastodon-tl--field 'created_at toot)))
-        (faved (equal 't (mastodon-tl--field 'favourited toot)))
-        (boosted (equal 't (mastodon-tl--field 'reblogged toot))))
-    (propertize
-     (concat (propertize "\n | " 'face 'default)
-             (when boosted
-               (format "(%s) "
-                       (propertize "B" 'face 'mastodon-boost-fave-face)))
-             (when faved
-               (format "(%s) "
-                       (propertize "F" 'face 'mastodon-boost-fave-face)))
-             (mastodon-tl--byline-author toot)
-             ;; only line that differes from mastodon-tl--timeline
-             ;; possibly refactor
-             (mastodon-notifications--byline-concat toot message)
-             " "
-             (propertize
-              (format-time-string mastodon-toot-timestamp-format parsed-time)
-              'timestamp parsed-time
-              'display (if mastodon-tl--enable-relative-timestamps
-                           (mastodon-tl--relative-time-description parsed-time)
-                         parsed-time))
-             (propertize "\n  ------------" 'face 'default))
-     'favourited-p faved
-     'boosted-p    boosted
-     'toot-id      id
-     'toot-json    toot)))
+  (concat
+   " "
+   (propertize message 'face 'highlight)
+   " "
+   (cdr (assoc message mastodon-notifications--response-alist))))
 
 (defun mastodon-notifications--mention (note)
   "Format for a `mention' NOTE."
   (let ((toot (mastodon-tl--field 'status note)))
-    (insert
-     (mastodon-tl--content toot) "\n"
-     (mastodon-notifications--byline toot "Mentioned")
-     "\n\n")))
+    (mastodon-tl--insert toot
+                       (replace-regexp-in-string
+                        "[\t\n ]*\\'" ""
+                        (if (mastodon-tl--has-spoiler toot)
+                            (mastodon-tl--spoiler toot)
+                          (mastodon-tl--content toot)))
+                       'mastodon-tl--byline-author
+                       (lambda(toot)
+                         (mastodon-notifications--byline-concat
+                          "Mentioned")))))
 
 (defun mastodon-notifications--follow (note)
   "Format for a `follow' NOTE."
-  (let ((toot (mastodon-tl--field 'status note)))
-  (insert
-    (propertize "Congratulations, you have a new follower!\n\n" 'face 'default)
-    (mastodon-notifications--byline note "Followed")
-    "\n\n")))
+  (mastodon-tl--insert note
+                     (propertize "Congratulations, you have a new follower!"
+                                 'face 'default)
+                     'mastodon-tl--byline-author
+                     (lambda(_toot)
+                       (mastodon-notifications--byline-concat
+                        "Followed"))))
 
 (defun mastodon-notifications--favourite (note)
   "Format for a `favourite' NOTE."
   (let ((toot (mastodon-tl--field 'status note)))
-    (insert
-     (mastodon-tl--content toot) "\n"
-     (mastodon-notifications--byline note "Favourited")
-             "\n\n")))
+    (mastodon-tl--insert toot
+                       (replace-regexp-in-string
+                        "[\t\n ]*\\'" ""
+                        (if (mastodon-tl--has-spoiler toot)
+                            (mastodon-tl--spoiler toot)
+                          (mastodon-tl--content toot)))
+                       (lambda(_toot)
+                         (mastodon-tl--byline-author
+                          note))
+                       (lambda(_toot)
+                         (mastodon-notifications--byline-concat
+                          "Favourited")))))
 
 (defun mastodon-notifications--reblog (note)
   "Format for a `boost' NOTE."
   (let ((toot (mastodon-tl--field 'status note)))
-    (insert
-     (mastodon-tl--content toot) "\n"
-     (mastodon-notifications--byline note "Boosted")
-     "\n\n")))
+    (mastodon-tl--insert toot
+                       (replace-regexp-in-string
+                        "[\t\n ]*\\'" ""
+                        (if (mastodon-tl--has-spoiler toot)
+                            (mastodon-tl--spoiler toot)
+                          (mastodon-tl--content toot)))
+                       (lambda(_toot)
+                         (mastodon-tl--byline-author
+                          note))
+                       (lambda(_toot)
+                         (mastodon-notifications--byline-concat
+                          "Boosted")))))
 
-(defun mastodon-notifications--note (note)
+(defun mastodon-notifications--by-type (note)
   "Filters NOTE for those listed in `mastodon-notifications--types-alist'."
   (let* ((type (mastodon-tl--field 'type note))
          (fun (cdr (assoc type mastodon-notifications--types-alist))))
-    (when fun
-      (funcall fun note))))
+    (when fun (funcall fun note))))
 
-(defun mastodon-notifications--notifications (json)
+(defun mastodon-notifications--timeline (json)
   "Format JSON in Emacs buffer."
-  (mapc #'mastodon-notifications--note json)
-    (goto-char (point-min))
-  (while (search-forward "\n\n\n | " nil t)
-    (replace-match "\n | "))
+  (mapc #'mastodon-notifications--by-type json)
+  (goto-char (point-min))
   (when mastodon-tl--display-media-p
     (mastodon-media--inline-images)))
 
 (defun mastodon-notifications--get ()
   "Display NOTIFICATIONS in buffer."
   (interactive)
-  (let* ((url (mastodon-http--api "notifications"))
-         (buffer "*mastodon-notifications*")
-         (json (mastodon-http--get-json url)))
-    (with-output-to-temp-buffer buffer
-      (switch-to-buffer buffer)
-      (mastodon-mode)
-      (setq mastodon-tl--buffer-spec
-            `(buffer-name ,buffer
-                          endpoint "notifications"
-                          update-function
-                          ,'mastodon-notifications--notifications))
-      (mastodon-notifications--notifications json))))
+  (mastodon-tl--init
+   "*mastodon-notifications*"
+   "notifications"
+   'mastodon-notifications--timeline))
 
 (provide 'mastodon-notifications)
 ;;; mastodon-notifications.el ends here

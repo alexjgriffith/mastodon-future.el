@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2017 Johnson Denen
 ;; Author: Johnson Denen <johnson.denen@gmail.com>
-;; Version: 0.6.0
+;; Version: 0.7.1
 ;; Package-Requires: ((emacs "24.4"))
 ;; Homepage: https://github.com/jdenen/mastodon.el
 
@@ -25,9 +25,6 @@
 
 ;;; Commentary:
 
-;; Bug, mastodon-async--html-buffer not properly defined
-
-;; Requires extensive documentation
 ;; Rework sync code so it does not mess up the async-buffer
 
 ;;; Code:
@@ -43,6 +40,8 @@
 (define-minor-mode mastodon-async-mode
   "Async Mastodon."
   :lighter " MasA")
+
+(defvar mastodon-instance-url)
 
 (make-variable-buffer-local
  (defvar mastodon-async--queue "" ;;"*mastodon-async-queue*"
@@ -119,7 +118,7 @@ using FILTER.
 Argument TIMELINE a specific target, such as federated or home.
 Argument NAME the center portion of the buffer name for *mastodon-async-buffer and *mastodon-async-queueu."
   (let ((buffer (mastodon-async--start-process
-                 (concat "streaming/" endpoint) filter name)))
+                 endpoint filter name)))
     (with-current-buffer buffer
       (mastodon-async--display-buffer)
       (goto-char (point-max))
@@ -135,58 +134,89 @@ Argument NAME the center portion of the buffer name for *mastodon-async-buffer a
               (mastodon-auth--access-token))))))
     (url-retrieve url callback)))
 
+(defun mastodon-async--set-http-buffer (buffer http-buffer)
+  "Initializes for BUFFER a local variable `mastodon-async--http-buffer'
+
+HTTP-BUFFER is the initializing value. Use this funcion if HTTP-BUFFER
+is not known when `mastodon-async--setup-buffer' is called"  
+  (with-current-buffer (get-buffer-create buffer)
+    (setq mastodon-async--http-buffer http-buffer)))
+
 (defun mastodon-async--set-local-variables(buffer
                                            http-buffer
                                            buffer-name
                                            queue-name)
   (with-current-buffer (get-buffer-create buffer)
+    (let ((value mastodon-instance-url))
+      (make-local-variable 'mastodon-instance-url)
+      (setq-local mastodon-instance-url value))
     (setq mastodon-async--http-buffer http-buffer)
     (setq mastodon-async--buffer buffer-name)
     (setq mastodon-async--queue queue-name)))
 
 (defun mastodon-async--setup-http (http-buffer name)
-  (let ((queue-name(concat "*mastodon-async-queue-" name "*"))
-        (buffer-name(concat "*mastodon-async-buffer-" name "*")))
+  "Adds local variables to HTTP-BUFFER.
+
+NAME is used to generate the display buffer and the queue."
+  (let ((queue-name(concat " *mastodon-async-queue-" name "-"
+                           mastodon-instance-url "*"))
+        (buffer-name(concat "*mastodon-async-display-" name "-"
+                            mastodon-instance-url "*")))
     (mastodon-async--set-local-variables http-buffer http-buffer
                                          buffer-name queue-name)))
 
 (defun mastodon-async--setup-queue (http-buffer name)
-  (let ((queue-name(concat "*mastodon-async-queue-" name "*"))
-        (buffer-name(concat "*mastodon-async-buffer-" name "*")))
+  "Sets up the buffer for the async queue."
+  (let ((queue-name(concat " *mastodon-async-queue-" name "-"
+                           mastodon-instance-url "*"))
+        (buffer-name(concat "*mastodon-async-display-" name "-"
+                            mastodon-instance-url "*")))
     (mastodon-async--set-local-variables queue-name http-buffer
-                                         buffer-name queue-name)))
+                                         buffer-name queue-name)
+    queue-name))
 
-(defun mastodon-async--setup-buffer (http-buffer name)
-  (let ((queue-name (concat "*mastodon-async-queue-" name "*"))
-        (buffer-name (concat "*mastodon-async-buffer-" name "*")))
+(defun mastodon-async--setup-buffer (http-buffer name endpoint)
+  "Sets up the buffer timeline like `mastodon-tl--init'.
+
+HTTP-BUFFER the name of the http-buffer, if unknow set to 
+NAME is the given name of the stream, like local for public?local
+ENPOINT is the specific endpoint for a stream and timeline"  
+  (let ((queue-name (concat " *mastodon-async-queue-" name "-"
+                            mastodon-instance-url "*"))
+        (buffer-name (concat "*mastodon-async-display-" name "-"
+                             mastodon-instance-url "*")))
     (mastodon-async--set-local-variables buffer-name http-buffer
                                          buffer-name queue-name)
+    ;; Similar to timeline init. 
     (with-current-buffer (get-buffer-create buffer-name)
-      (mastodon-async-mode t))
-))
+      (make-local-variable 'mastodon-tl--enable-relative-timestamps)
+      (make-local-variable 'mastodon-tl--display-media-p)
+      (message (mastodon-http--api (format "timelines/%s" endpoint)))
+      (mastodon-tl--timeline (mastodon-http--get-json
+                              (mastodon-http--api
+                               (format "timelines/%s" endpoint))))
+      (mastodon-mode)
+      (setq mastodon-tl--buffer-spec
+            `(buffer-name ,buffer-name
+                          endpoint ,(format "timelines/%s" endpoint)
+                          update-function
+                          ,'mastodon-tl--timeline))
+      (setq-local mastodon-tl--enable-relative-timestamps nil)
+      (setq-local mastodon-tl--display-media-p t)
+      (current-buffer))))
 
 (defun mastodon-async--start-process (endpoint filter &optional name)
   "Start an async mastodon stream at ENDPOINT.
 Filter the toots using FILTER."  
-  (with-current-buffer (get-buffer-create
-                         (concat "*mastodon-async-buffer-"
-                                 (or name endpoint) "*"))    
-    (make-local-variable 'mastodon-tl--enable-relative-timestamps)
-    (make-local-variable 'mastodon-tl--display-media-p)
-    (mastodon-mode)
-    (setq-local mastodon-tl--enable-relative-timestamps nil)
-    (setq-local mastodon-tl--display-media-p t))
-  (let ((http-buffer (mastodon-async--get
-                      (mastodon-http--api endpoint)
-                      (lambda (status) (message "HTTP SOURCE CLOSED")))))
-    (message (format "%s" (mastodon-http--api endpoint)))
-    (mastodon-async--setup-buffer  http-buffer (or name endpoint))    
-    (mastodon-async--setup-queue  http-buffer (or name endpoint))
-    (mastodon-async--setup-http  http-buffer (or name endpoint))
-    (with-current-buffer (get-buffer (concat "*mastodon-async-buffer-"
-                                             (or name endpoint)
-                                             "*"))
-      (message (format "HTTP buffer 2: %s" mastodon-async--http-buffer)))
+  (let* ((stream (concat "streaming/" endpoint))
+         (async-queue (mastodon-async--setup-queue "" (or name stream)))
+         (async-buffer (mastodon-async--setup-buffer "" (or name stream) endpoint))
+         (http-buffer (mastodon-async--get
+                       (mastodon-http--api stream)
+                       (lambda (status) (message "HTTP SOURCE CLOSED")))))
+    (mastodon-async--setup-http  http-buffer (or name stream))
+    (mastodon-async--set-http-buffer async-buffer http-buffer)
+    (mastodon-async--set-http-buffer async-queue http-buffer)        
     (set-process-filter (get-buffer-process http-buffer)
                         (mastodon-async--http-hook filter))
     http-buffer))

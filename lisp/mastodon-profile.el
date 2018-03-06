@@ -2,6 +2,8 @@
 
 ;; Copyright (C) 2017 Johnson Denen
 ;; Author: Johnson Denen <johnson.denen@gmail.com>
+;; Version: 0.7.1
+;; Package-Requires: ((emacs "24.4"))
 ;; Homepage: https://github.com/jdenen/mastodon.el
 
 ;; This file is not part of GNU Emacs.
@@ -87,7 +89,7 @@
        (concat " ------------\n"
                "     TOOTS   \n"
                " ------------\n")
-       'success 'nil))       
+       'success))       
       (mastodon-tl--timeline json))
     (mastodon-tl--goto-next-toot)))
 
