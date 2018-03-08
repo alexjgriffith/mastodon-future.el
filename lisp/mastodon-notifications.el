@@ -63,59 +63,63 @@
 
 (defun mastodon-notifications--mention (note)
   "Format for a `mention' NOTE."
-  (let ((toot (mastodon-tl--field 'status note)))
-    (mastodon-tl--insert toot
-                       (replace-regexp-in-string
-                        "[\t\n ]*\\'" ""
-                        (if (mastodon-tl--has-spoiler toot)
-                            (mastodon-tl--spoiler toot)
-                          (mastodon-tl--content toot)))
-                       'mastodon-tl--byline-author
-                       (lambda(toot)
-                         (mastodon-notifications--byline-concat
-                          "Mentioned")))))
+  (let ((status (mastodon-tl--field 'status note)))
+    (mastodon-tl--insert-status
+     status
+     (replace-regexp-in-string
+      "[\t\n ]*\\'" ""
+      (if (mastodon-tl--has-spoiler status)
+          (mastodon-tl--spoiler status)
+        (mastodon-tl--content status)))
+     'mastodon-tl--byline-author
+     (lambda(_status)
+       (mastodon-notifications--byline-concat
+        "Mentioned")))))
 
 (defun mastodon-notifications--follow (note)
   "Format for a `follow' NOTE."
-  (mastodon-tl--insert note
-                     (propertize "Congratulations, you have a new follower!"
-                                 'face 'default)
-                     'mastodon-tl--byline-author
-                     (lambda(_toot)
-                       (mastodon-notifications--byline-concat
-                        "Followed"))))
+  (mastodon-tl--insert-status
+   note
+   (propertize "Congratulations, you have a new follower!"
+               'face 'default)
+   'mastodon-tl--byline-author
+   (lambda(_toot)
+     (mastodon-notifications--byline-concat
+      "Followed"))))
 
 (defun mastodon-notifications--favourite (note)
   "Format for a `favourite' NOTE."
-  (let ((toot (mastodon-tl--field 'status note)))
-    (mastodon-tl--insert toot
-                       (replace-regexp-in-string
-                        "[\t\n ]*\\'" ""
-                        (if (mastodon-tl--has-spoiler toot)
-                            (mastodon-tl--spoiler toot)
-                          (mastodon-tl--content toot)))
-                       (lambda(_toot)
-                         (mastodon-tl--byline-author
-                          note))
-                       (lambda(_toot)
-                         (mastodon-notifications--byline-concat
-                          "Favourited")))))
+  (let ((status (mastodon-tl--field 'status note)))
+    (mastodon-tl--insert-status
+     status
+     (replace-regexp-in-string
+      "[\t\n ]*\\'" ""
+      (if (mastodon-tl--has-spoiler status)
+          (mastodon-tl--spoiler status)
+        (mastodon-tl--content status)))
+     (lambda(_status)
+       (mastodon-tl--byline-author
+                            note))
+     (lambda(_status)
+       (mastodon-notifications--byline-concat
+        "Favourited")))))
 
 (defun mastodon-notifications--reblog (note)
   "Format for a `boost' NOTE."
-  (let ((toot (mastodon-tl--field 'status note)))
-    (mastodon-tl--insert toot
-                       (replace-regexp-in-string
-                        "[\t\n ]*\\'" ""
-                        (if (mastodon-tl--has-spoiler toot)
-                            (mastodon-tl--spoiler toot)
-                          (mastodon-tl--content toot)))
-                       (lambda(_toot)
-                         (mastodon-tl--byline-author
-                          note))
-                       (lambda(_toot)
-                         (mastodon-notifications--byline-concat
-                          "Boosted")))))
+  (let ((status (mastodon-tl--field 'status note)))
+    (mastodon-tl--insert-status
+     status
+     (replace-regexp-in-string
+      "[\t\n ]*\\'" ""
+      (if (mastodon-tl--has-spoiler status)
+          (mastodon-tl--spoiler status)
+                            (mastodon-tl--content status)))
+     (lambda(_status)
+       (mastodon-tl--byline-author
+        note))
+     (lambda(_status)
+       (mastodon-notifications--byline-concat
+        "Boosted")))))
 
 (defun mastodon-notifications--by-type (note)
   "Filters NOTE for those listed in `mastodon-notifications--types-alist'."
