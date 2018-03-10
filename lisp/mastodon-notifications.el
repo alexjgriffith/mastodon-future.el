@@ -72,7 +72,7 @@
           (mastodon-tl--spoiler status)
         (mastodon-tl--content status)))
      'mastodon-tl--byline-author
-     (lambda(_status)
+     (lambda (_status)
        (mastodon-notifications--byline-concat
         "Mentioned")))))
 
@@ -83,7 +83,7 @@
    (propertize "Congratulations, you have a new follower!"
                'face 'default)
    'mastodon-tl--byline-author
-   (lambda(_toot)
+   (lambda (_status)
      (mastodon-notifications--byline-concat
       "Followed"))))
 
@@ -97,10 +97,10 @@
       (if (mastodon-tl--has-spoiler status)
           (mastodon-tl--spoiler status)
         (mastodon-tl--content status)))
-     (lambda(_status)
+     (lambda (_status)
        (mastodon-tl--byline-author
                             note))
-     (lambda(_status)
+     (lambda (_status)
        (mastodon-notifications--byline-concat
         "Favourited")))))
 
@@ -114,10 +114,10 @@
       (if (mastodon-tl--has-spoiler status)
           (mastodon-tl--spoiler status)
                             (mastodon-tl--content status)))
-     (lambda(_status)
+     (lambda (_status)
        (mastodon-tl--byline-author
         note))
-     (lambda(_status)
+     (lambda (_status)
        (mastodon-notifications--byline-concat
         "Boosted")))))
 
